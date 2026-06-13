@@ -293,11 +293,12 @@
   {
     "id": "VIBE-030",
     "title": "Add multi-tenant isolation — org-level API keys + data segregation",
-    "status": "in-progress",
+    "status": "done",
     "priority": "high",
     "assigned_to": "system_designer",
     "created": "2026-06-13T04:05:00Z",
     "started": "2026-06-13T04:27:00Z",
+    "completed": "2026-06-13T04:47:00Z",
     "spec_ref": "message.txt §3"
   }
 ]
