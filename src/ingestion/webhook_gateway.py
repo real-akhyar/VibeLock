@@ -39,7 +39,18 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-app = FastAPI(title="VibeLock Ingestion Gateway", version="0.3.0")
+app = FastAPI(
+    title="VibeLock Ingestion Gateway",
+    version="0.3.0",
+    description="Autonomous security remediation — webhook ingestion, scanning, and PR automation API.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
+
+# Mount GitHub App setup routes
+from vibelock.src.api.github_setup_routes import router as github_setup_router
+app.include_router(github_setup_router)
 
 # CORS
 app.add_middleware(
