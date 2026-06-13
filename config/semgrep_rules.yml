@@ -1,0 +1,280 @@
+# VibeLock — Semgrep Rule Pack
+# Common Node.js / Python vulnerability detection rules
+# Used by the heuristic scanner for fast, low-cost pattern matching
+
+rules:
+  # ============================================================
+  # Python Rules
+  # ============================================================
+
+  - id: python-hardcoded-secret
+    pattern-either:
+      - pattern: |
+          $VAR = "$SECRET"
+      - pattern: |
+          $VAR = '$SECRET'
+    message: |
+      Hardcoded secret detected. Use environment variables or a secrets manager.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      confidence: HIGH
+    paths:
+      include:
+        - "*.py"
+
+  - id: python-sql-injection-fstring
+    pattern-either:
+      - pattern: |
+          cursor.execute(f"...")
+      - pattern: |
+          $DB.execute(f"...")
+      - pattern: |
+          $CURSOR.execute(f"...")
+    message: |
+      SQL injection via f-string in execute(). Use parameterized queries.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+      confidence: HIGH
+
+  - id: python-sql-injection-format
+    pattern-either:
+      - pattern: |
+          cursor.execute("...".format(...))
+      - pattern: |
+          cursor.execute("..." % (...))
+    message: |
+      SQL injection via string formatting. Use parameterized queries.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+      confidence: HIGH
+
+  - id: python-subprocess-shell-true
+    pattern-either:
+      - pattern: |
+          subprocess.call($CMD, shell=True)
+      - pattern: |
+          subprocess.Popen($CMD, shell=True)
+      - pattern: |
+          os.system($CMD)
+      - pattern: |
+          os.popen($CMD)
+    message: |
+      Shell injection risk. Avoid shell=True with user-supplied input.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+      confidence: MEDIUM
+
+  - id: python-pickle-deserialization
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: cPickle.loads(...)
+      - pattern: dill.loads(...)
+    message: |
+      Unsafe deserialization via pickle. Use JSON or a safe serializer.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+
+  - id: python-eval-exec
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+      - pattern: compile(..., "eval", ...)
+    message: |
+      Dangerous eval/exec usage. Avoid dynamic code execution.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-95: Code Injection"
+      confidence: HIGH
+
+  - id: python-debug-true
+    pattern: |
+      app.run(debug=True)
+    message: |
+      Flask debug mode enabled in production. Disable debug mode.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-489: Active Debug Code"
+      confidence: HIGH
+
+  - id: python-request-verify-false
+    pattern: |
+      requests.$METHOD(..., verify=False)
+    message: |
+      SSL verification disabled. This enables MITM attacks.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+
+  # ============================================================
+  # JavaScript / TypeScript Rules
+  # ============================================================
+
+  - id: js-hardcoded-secret
+    pattern-either:
+      - pattern: |
+          const $VAR = "$SECRET"
+      - pattern: |
+          let $VAR = "$SECRET"
+      - pattern: |
+          var $VAR = "$SECRET"
+      - pattern: |
+          $VAR = "$SECRET"
+    message: |
+      Hardcoded secret detected. Use environment variables.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      confidence: HIGH
+
+  - id: js-eval
+    pattern: eval(...)
+    message: |
+      Dangerous eval() usage. Avoid dynamic code execution.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-95: Code Injection"
+      confidence: HIGH
+
+  - id: js-innerhtml-xss
+    pattern-either:
+      - pattern: |
+          $EL.innerHTML = $X
+      - pattern: |
+          $EL.outerHTML = $X
+      - pattern: |
+          document.write($X)
+    message: |
+      Potential XSS via innerHTML/document.write. Use textContent or sanitize.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79: Cross-Site Scripting"
+      confidence: MEDIUM
+
+  - id: js-sql-injection-concatenation
+    pattern-either:
+      - pattern: |
+          $DB.query("..." + $VAR + "...")
+      - pattern: |
+          $DB.query(`...${$VAR}...`)
+    message: |
+      SQL injection via string concatenation. Use parameterized queries.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+      confidence: HIGH
+
+  - id: js-no-csrf-protection
+    pattern: |
+      app.use(..., {..., csrf: false, ...})
+    message: |
+      CSRF protection explicitly disabled. Enable CSRF tokens.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-352: Cross-Site Request Forgery"
+      confidence: MEDIUM
+
+  - id: js-jwt-none-algorithm
+    pattern-either:
+      - pattern: |
+          jwt.verify(..., {algorithms: ["none"]})
+      - pattern: |
+          jwt.verify(..., {algorithms: ["None"]})
+    message: |
+      JWT verification with 'none' algorithm. This bypasses signature checks.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+      confidence: HIGH
+
+  # ============================================================
+  # Supabase / RLS Rules
+  # ============================================================
+
+  - id: supabase-missing-rls-policy
+    pattern: |
+      CREATE TABLE $TABLE (...) 
+    message: |
+      Table created without explicit RLS policy. Add ALTER TABLE ... ENABLE ROW LEVEL SECURITY.
+    severity: WARNING
+    languages: [sql]
+    metadata:
+      category: security
+      confidence: MEDIUM
+
+  - id: supabase-service-key-client
+    pattern-either:
+      - pattern: |
+          createClient($URL, $SERVICE_KEY)
+      - pattern: |
+          supabase.createClient($URL, $SERVICE_KEY)
+    message: |
+      Supabase service_role key used in client code. Use anon key for client-side.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-250: Execution with Unnecessary Privileges"
+      confidence: HIGH
+
+  # ============================================================
+  # Docker / Infrastructure Rules
+  # ============================================================
+
+  - id: docker-run-as-root
+    pattern: |
+      USER root
+    message: |
+      Container running as root. Use a non-root USER for security.
+    severity: WARNING
+    languages: [dockerfile]
+    metadata:
+      category: security
+      cwe: "CWE-250: Execution with Unnecessary Privileges"
+      confidence: MEDIUM
+
+  - id: docker-exposed-ports-all
+    pattern: |
+      EXPOSE 0-65535
+    message: |
+      All ports exposed. Only expose necessary ports.
+    severity: WARNING
+    languages: [dockerfile]
+    metadata:
+      category: security
+      confidence: MEDIUM
