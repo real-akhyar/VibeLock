@@ -8,6 +8,7 @@ import hmac
 import json
 import time
 import asyncio
+import uuid
 from typing import Optional
 from datetime import datetime, timezone
 from collections import defaultdict
@@ -33,10 +34,12 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=60)
     webhook_retry_max: int = Field(default=3)
     webhook_retry_backoff: float = Field(default=2.0)
+    supabase_url: str = Field(default="")
+    supabase_service_key: str = Field(default="")
 
 
 settings = Settings()
-app = FastAPI(title="VibeLock Ingestion Gateway", version="0.2.0")
+app = FastAPI(title="VibeLock Ingestion Gateway", version="0.3.0")
 
 # CORS
 app.add_middleware(
@@ -47,62 +50,208 @@ app.add_middleware(
 )
 
 
-# --- Rate Limiting ---
+# --- Redis-backed Rate Limiter ---
 class RateLimiter:
-    """Simple in-memory sliding-window rate limiter."""
-    
+    """Redis-backed sliding-window rate limiter using sorted sets."""
+
+    REDIS_KEY_PREFIX = "vibelock:ratelimit:"
+
     def __init__(self, max_per_minute: int = 60):
         self.max_per_minute = max_per_minute
-        self._windows: dict[str, list[float]] = defaultdict(list)
-    
-    def is_allowed(self, key: str) -> bool:
-        now = time.time()
-        window = self._windows[key]
-        # Remove expired entries
-        self._windows[key] = [t for t in window if now - t < 60]
-        if len(self._windows[key]) >= self.max_per_minute:
-            return False
-        self._windows[key].append(now)
-        return True
-    
-    def remaining(self, key: str) -> int:
-        now = time.time()
-        window = [t for t in self._windows.get(key, []) if now - t < 60]
-        return max(0, self.max_per_minute - len(window))
+
+    async def is_allowed(self, key: str) -> bool:
+        redis = get_redis()
+        if redis is None:
+            # Fallback: allow all if Redis is down
+            return True
+
+        now_ms = int(time.time() * 1000)
+        window_ms = 60_000
+        cutoff_ms = now_ms - window_ms
+        redis_key = f"{self.REDIS_KEY_PREFIX}{key}"
+
+        try:
+            async with redis.pipeline(transaction=True) as pipe:
+                # Remove expired entries
+                await pipe.zremrangebyscore(redis_key, 0, cutoff_ms)
+                # Count current window
+                await pipe.zcard(redis_key)
+                # Add current request
+                await pipe.zadd(redis_key, {str(now_ms): now_ms})
+                # Set TTL on the key
+                await pipe.expire(redis_key, 120)
+                _, count, _, _ = await pipe.execute()
+
+            return count < self.max_per_minute
+        except Exception as e:
+            logger.error("rate_limiter_redis_error", error=str(e))
+            return True  # Fail open
+
+    async def remaining(self, key: str) -> int:
+        redis = get_redis()
+        if redis is None:
+            return self.max_per_minute
+
+        now_ms = int(time.time() * 1000)
+        cutoff_ms = now_ms - 60_000
+        redis_key = f"{self.REDIS_KEY_PREFIX}{key}"
+
+        try:
+            await redis.zremrangebyscore(redis_key, 0, cutoff_ms)
+            count = await redis.zcard(redis_key)
+            return max(0, self.max_per_minute - count)
+        except Exception:
+            return self.max_per_minute
+
+    async def active_keys(self) -> int:
+        """Count active rate-limit keys (for health monitoring)."""
+        redis = get_redis()
+        if redis is None:
+            return 0
+        try:
+            keys = await redis.keys(f"{self.REDIS_KEY_PREFIX}*")
+            return len(keys)
+        except Exception:
+            return 0
 
 
 rate_limiter = RateLimiter(max_per_minute=settings.rate_limit_per_minute)
 
 
-# --- Webhook Replay Store ---
+# --- Redis-backed Webhook Replay Store ---
 class WebhookReplayStore:
-    """In-memory store for failed webhook deliveries, with retry support."""
-    
-    def __init__(self):
-        self._failed: dict[str, dict] = {}
-        self._retry_counts: dict[str, int] = defaultdict(int)
-    
-    def record_failure(self, delivery_id: str, payload: dict, error: str):
-        self._failed[delivery_id] = {
-            "payload": payload,
+    """Redis-backed store for failed webhook deliveries with retry support."""
+
+    FAILED_KEY = "vibelock:failed_deliveries"
+    DEAD_LETTER_KEY = "vibelock:dead_letter"
+    STATUS_KEY_PREFIX = "vibelock:delivery_status:"
+
+    async def record_failure(self, delivery_id: str, payload: dict, error: str):
+        redis = get_redis()
+        if redis is None:
+            return
+        entry = {
+            "delivery_id": delivery_id,
+            "payload": json.dumps(payload),
             "error": error,
             "failed_at": datetime.now(timezone.utc).isoformat(),
-            "retry_count": self._retry_counts[delivery_id],
+            "retry_count": "0",
         }
-    
-    def record_success(self, delivery_id: str):
-        self._failed.pop(delivery_id, None)
-        self._retry_counts.pop(delivery_id, None)
-    
-    def get_pending(self) -> list[dict]:
-        return [
-            {"delivery_id": did, **data}
-            for did, data in self._failed.items()
-            if self._retry_counts[did] < settings.webhook_retry_max
-        ]
-    
-    def increment_retry(self, delivery_id: str):
-        self._retry_counts[delivery_id] += 1
+        try:
+            await redis.hset(self.FAILED_KEY, delivery_id, json.dumps(entry))
+            await redis.expire(self.FAILED_KEY, 86400 * 7)  # 7-day TTL
+        except Exception as e:
+            logger.error("replay_store_record_failure_error", error=str(e))
+
+    async def record_success(self, delivery_id: str):
+        redis = get_redis()
+        if redis is None:
+            return
+        try:
+            await redis.hdel(self.FAILED_KEY, delivery_id)
+            await redis.setex(
+                f"{self.STATUS_KEY_PREFIX}{delivery_id}",
+                3600,
+                json.dumps({"status": "delivered", "at": datetime.now(timezone.utc).isoformat()}),
+            )
+        except Exception as e:
+            logger.error("replay_store_record_success_error", error=str(e))
+
+    async def get_pending(self) -> list[dict]:
+        redis = get_redis()
+        if redis is None:
+            return []
+        try:
+            raw = await redis.hgetall(self.FAILED_KEY)
+            pending = []
+            for delivery_id, data_json in raw.items():
+                entry = json.loads(data_json)
+                retry_count = int(entry.get("retry_count", 0))
+                if retry_count < settings.webhook_retry_max:
+                    pending.append({
+                        "delivery_id": delivery_id,
+                        "payload": json.loads(entry["payload"]),
+                        "error": entry["error"],
+                        "failed_at": entry["failed_at"],
+                        "retry_count": retry_count,
+                    })
+            return pending
+        except Exception as e:
+            logger.error("replay_store_get_pending_error", error=str(e))
+            return []
+
+    async def increment_retry(self, delivery_id: str):
+        redis = get_redis()
+        if redis is None:
+            return
+        try:
+            raw = await redis.hget(self.FAILED_KEY, delivery_id)
+            if raw:
+                entry = json.loads(raw)
+                new_count = int(entry.get("retry_count", 0)) + 1
+                entry["retry_count"] = str(new_count)
+                await redis.hset(self.FAILED_KEY, delivery_id, json.dumps(entry))
+
+                # Move to dead-letter if max retries exceeded
+                if new_count >= settings.webhook_retry_max:
+                    dead_entry = {
+                        **entry,
+                        "moved_to_dlq_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    await redis.lpush(self.DEAD_LETTER_KEY, json.dumps(dead_entry))
+                    await redis.hdel(self.FAILED_KEY, delivery_id)
+                    logger.warning("delivery_moved_to_dlq", delivery_id=delivery_id)
+        except Exception as e:
+            logger.error("replay_store_increment_retry_error", error=str(e))
+
+    async def get_delivery_status(self, delivery_id: str) -> dict:
+        """Check status of a specific delivery."""
+        redis = get_redis()
+        if redis is None:
+            return {"delivery_id": delivery_id, "status": "unknown", "error": "redis_unavailable"}
+
+        try:
+            # Check success status
+            status_raw = await redis.get(f"{self.STATUS_KEY_PREFIX}{delivery_id}")
+            if status_raw:
+                return {"delivery_id": delivery_id, **json.loads(status_raw)}
+
+            # Check if in failed store
+            failed_raw = await redis.hget(self.FAILED_KEY, delivery_id)
+            if failed_raw:
+                entry = json.loads(failed_raw)
+                return {
+                    "delivery_id": delivery_id,
+                    "status": "pending_retry",
+                    "retry_count": int(entry.get("retry_count", 0)),
+                    "failed_at": entry.get("failed_at"),
+                    "error": entry.get("error"),
+                }
+
+            # Check dead-letter
+            dlq_items = await redis.lrange(self.DEAD_LETTER_KEY, 0, -1)
+            for item_json in dlq_items:
+                item = json.loads(item_json)
+                if item.get("delivery_id") == delivery_id:
+                    return {
+                        "delivery_id": delivery_id,
+                        "status": "dead_letter",
+                        "retry_count": int(item.get("retry_count", 0)),
+                        "moved_to_dlq_at": item.get("moved_to_dlq_at"),
+                    }
+
+            return {"delivery_id": delivery_id, "status": "not_found"}
+        except Exception as e:
+            return {"delivery_id": delivery_id, "status": "error", "error": str(e)}
+
+    async def pending_count(self) -> int:
+        redis = get_redis()
+        if redis is None:
+            return 0
+        try:
+            return await redis.hlen(self.FAILED_KEY)
+        except Exception:
+            return 0
 
 
 replay_store = WebhookReplayStore()
@@ -124,6 +273,7 @@ class HealthResponse(BaseModel):
     timestamp: str
     rate_limiter: dict
     pending_retries: int
+    system: dict
 
 
 # --- Startup time ---
@@ -157,7 +307,7 @@ def get_redis():
     if _redis is None:
         try:
             import redis.asyncio as aioredis
-            _redis = aioredis.from_url(settings.redis_url)
+            _redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         except ImportError:
             logger.warning("redis_not_installed")
             _redis = None
@@ -178,6 +328,22 @@ async def publish_to_queue(payload: dict) -> bool:
     except Exception as e:
         logger.error("redis_publish_failed", error=str(e))
         return False
+
+
+# --- Supabase Health Check ---
+async def check_supabase_health() -> dict:
+    """Check Supabase connectivity."""
+    if not settings.supabase_url or not settings.supabase_service_key:
+        return {"connected": False, "error": "SUPABASE_URL or SUPABASE_SERVICE_KEY not configured"}
+    try:
+        from supabase import create_client
+        client = create_client(settings.supabase_url, settings.supabase_service_key)
+        result = client.table("organizations").select("id").limit(1).execute()
+        return {"connected": True}
+    except ImportError:
+        return {"connected": False, "error": "supabase-py not installed"}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
 
 
 # --- Endpoints ---
@@ -208,16 +374,20 @@ async def health_check():
     except Exception as e:
         system = {"error": str(e)}
     
+    active_keys = await rate_limiter.active_keys()
+    pending = await replay_store.pending_count()
+
     return {
         "status": "ok",
         "service": "vibelock-ingestion",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "uptime_seconds": round(time.time() - START_TIME, 1),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "rate_limiter": {
             "max_per_minute": settings.rate_limit_per_minute,
+            "active_keys": active_keys,
         },
-        "pending_retries": len(replay_store.get_pending()),
+        "pending_retries": pending,
         "system": system,
     }
 
@@ -230,7 +400,7 @@ async def liveness():
 
 @app.get("/health/ready")
 async def readiness():
-    """Kubernetes-style readiness probe — checks Redis connectivity."""
+    """Kubernetes-style readiness probe — checks Redis and Supabase connectivity."""
     redis = get_redis()
     redis_ok = False
     if redis:
@@ -239,37 +409,50 @@ async def readiness():
             redis_ok = True
         except Exception:
             pass
+
+    supabase_health = await check_supabase_health()
     
+    checks = {
+        "status": "ready",
+        "redis": "connected" if redis_ok else ("not_configured" if not settings.redis_url else "disconnected"),
+        "supabase": supabase_health,
+    }
+
     if not redis_ok and settings.redis_url:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready", "redis": "disconnected"},
-        )
-    return {"status": "ready", "redis": "connected" if redis_ok else "not_configured"}
+        return JSONResponse(status_code=503, content={**checks, "status": "not_ready"})
+    return checks
 
 
 @app.get("/webhook/replay/pending")
 async def list_pending_retries():
     """List webhooks awaiting retry."""
-    return {"pending": replay_store.get_pending()}
+    pending = await replay_store.get_pending()
+    return {"pending": pending}
 
 
 @app.post("/webhook/replay/retry")
 async def trigger_retry():
     """Manually trigger retry of all pending webhooks."""
-    pending = replay_store.get_pending()
+    pending = await replay_store.get_pending()
     results = []
     for item in pending:
         delivery_id = item["delivery_id"]
         payload = item["payload"]
         success = await publish_to_queue(payload)
         if success:
-            replay_store.record_success(delivery_id)
+            await replay_store.record_success(delivery_id)
             results.append({"delivery_id": delivery_id, "status": "retried"})
         else:
-            replay_store.increment_retry(delivery_id)
+            await replay_store.increment_retry(delivery_id)
             results.append({"delivery_id": delivery_id, "status": "failed_again"})
     return {"results": results}
+
+
+@app.get("/webhook/status/{delivery_id}")
+async def get_delivery_status(delivery_id: str):
+    """Check the status of a specific webhook delivery."""
+    status = await replay_store.get_delivery_status(delivery_id)
+    return status
 
 
 @app.post("/webhook/github")
@@ -282,9 +465,20 @@ async def github_webhook(
     """Receive GitHub webhook, validate, and queue for scanning."""
     # Rate limit check
     client_ip = request.client.host if request.client else "unknown"
-    if not rate_limiter.is_allowed(client_ip):
+    allowed = await rate_limiter.is_allowed(client_ip)
+    remaining = await rate_limiter.remaining(client_ip)
+
+    if not allowed:
         logger.warning("rate_limited", ip=client_ip)
-        raise HTTPException(status_code=429, detail="Too many requests")
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests"},
+            headers={
+                "X-RateLimit-Limit": str(settings.rate_limit_per_minute),
+                "X-RateLimit-Remaining": "0",
+                "Retry-After": "60",
+            },
+        )
     
     body = await request.body()
     
@@ -329,21 +523,37 @@ async def github_webhook(
     
     if not published:
         # Queue failed — store for retry
-        replay_store.record_failure(x_github_delivery, scan_payload, "redis_unavailable")
-        logger.warning("queue_publish_failed_stored_for_retry", delivery=x_github_delivery)
-        return {
-            "status": "accepted_retry_pending",
-            "delivery": x_github_delivery,
+        delivery_id = x_github_delivery or str(uuid.uuid4())
+        await replay_store.record_failure(delivery_id, scan_payload, "redis_unavailable")
+        logger.warning("queue_publish_failed_stored_for_retry", delivery=delivery_id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "accepted_retry_pending",
+                "delivery": delivery_id,
+                "event": x_github_event,
+            },
+            headers={
+                "X-RateLimit-Limit": str(settings.rate_limit_per_minute),
+                "X-RateLimit-Remaining": str(remaining),
+            },
+        )
+    
+    delivery_id = x_github_delivery or str(uuid.uuid4())
+    await replay_store.record_success(delivery_id)
+    
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "accepted",
+            "delivery": delivery_id,
             "event": x_github_event,
-        }
-    
-    replay_store.record_success(x_github_delivery)
-    
-    return {
-        "status": "accepted",
-        "delivery": x_github_delivery,
-        "event": x_github_event,
-    }
+        },
+        headers={
+            "X-RateLimit-Limit": str(settings.rate_limit_per_minute),
+            "X-RateLimit-Remaining": str(remaining),
+        },
+    )
 
 
 def _extract_changed_files(payload: dict) -> list[str]:

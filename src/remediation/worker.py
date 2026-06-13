@@ -8,9 +8,10 @@ import os
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from celery import Celery
 
-from vibelock.src.remediation.engine import RemediationEngine
+from vibelock.src.remediation.engine import remediate_finding, generate_patch
 from vibelock.src.verifier.patch_verifier import PatchVerifier
 from vibelock.src.shared.sanitizer import TokenSanitizer
 from vibelock.src.shared.budget import BudgetGuard
@@ -49,7 +50,6 @@ def get_supabase():
     return _supabase
 
 
-engine = RemediationEngine()
 verifier = PatchVerifier()
 sanitizer = TokenSanitizer()
 budget = BudgetGuard()
@@ -77,11 +77,11 @@ def remediate_vulnerability(self, vuln: dict):
     }
     """
     vuln_id = vuln.get("id", "unknown")
-    vuln_type = vuln.get("vulnerability_type", "unknown")
-    file_path = vuln.get("file_path", "")
+    vuln_type = vuln.get("vulnerability_type", vuln.get("type", "unknown"))
+    file_path_str = vuln.get("file_path", "")
     severity = vuln.get("severity", "medium")
 
-    logger.info(f"Remediation started: {vuln_id} ({vuln_type}) in {file_path}")
+    logger.info(f"Remediation started: {vuln_id} ({vuln_type}) in {file_path_str}")
 
     supabase = get_supabase()
 
@@ -95,9 +95,9 @@ def remediate_vulnerability(self, vuln: dict):
             logger.error(f"Failed to update vuln status: {e}")
 
     # --- Read the vulnerable file ---
+    file_path = Path(file_path_str)
     try:
-        with open(file_path, "r") as fh:
-            original_code = fh.read()
+        original_code = file_path.read_text(encoding="utf-8", errors="ignore")
     except FileNotFoundError:
         logger.error(f"File not found: {file_path}")
         _mark_failed(supabase, vuln_id, f"File not found: {file_path}")
@@ -119,12 +119,28 @@ def remediate_vulnerability(self, vuln: dict):
         # Sanitize code before sending to LLM
         clean_code = sanitizer.sanitize(original_code)
 
-        # Generate patch
-        patch_code = engine.generate_patch(
-            vulnerability=vuln,
-            original_code=clean_code,
-            attempt=attempt,
-        )
+        # Generate patch using the engine's generate_patch function
+        # Build a Finding-like dict for the engine
+        finding_dict = {
+            "vulnerability_type": vuln_type,
+            "severity": severity,
+            "file_path": file_path_str,
+            "line_number": vuln.get("line_number", 1),
+            "description": vuln.get("description", ""),
+            "code_snippet": vuln.get("code_snippet", clean_code[:500]),
+        }
+
+        try:
+            patch_result = generate_patch(
+                finding=finding_dict,
+                file_path=file_path,
+                llm_call=_llm_call_sync,
+            )
+            patch_code = patch_result.patch_code if hasattr(patch_result, 'patch_code') else patch_result.get("patch_code", "")
+        except Exception as e:
+            last_error = f"Patch generation failed: {e}"
+            logger.warning(f"Attempt {attempt}: {last_error}")
+            continue
 
         if not patch_code:
             last_error = "Patch generator returned empty result"
@@ -135,13 +151,13 @@ def remediate_vulnerability(self, vuln: dict):
         verification = verifier.verify(
             original_code=original_code,
             patched_code=patch_code,
-            file_path=file_path,
-            vulnerability=vuln,
+            file_path=file_path_str,
+            vulnerability={"vulnerability_type": vuln_type},
         )
 
         budget.record_attempt()
 
-        if verification["passed"]:
+        if verification.get("passed"):
             logger.info(f"Patch verified on attempt {attempt}")
             break
         else:
@@ -158,7 +174,7 @@ def remediate_vulnerability(self, vuln: dict):
         return {
             "status": "failed",
             "reason": "max_attempts_exhausted",
-            "last_error": last_error,
+            "last_error": str(last_error),
         }
 
     # --- Patch verified — create PR ---
@@ -169,7 +185,7 @@ def remediate_vulnerability(self, vuln: dict):
             vulnerability=vuln,
             patched_code=patch_code,
             original_code=original_code,
-            file_path=file_path,
+            file_path=file_path_str,
         )
 
         if supabase:
@@ -194,6 +210,53 @@ def remediate_vulnerability(self, vuln: dict):
         return {"status": "failed", "reason": "pr_creation_failed", "error": str(e)}
 
 
+def _llm_call_sync(prompt: str) -> str:
+    """
+    Synchronous LLM call wrapper for Celery tasks.
+    Uses DeepSeek API via HTTP request.
+    """
+    import os
+    import json
+    from urllib.request import Request, urlopen
+    from urllib.error import URLError
+
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        logger.warning("DEEPSEEK_API_KEY not set — using mock response")
+        return json.dumps({
+            "patch": "# [VibeLock] Patch generation requires DEEPSEEK_API_KEY",
+            "explanation": "No API key configured"
+        })
+
+    try:
+        body = json.dumps({
+            "model": "deepseek-coder",
+            "messages": [
+                {"role": "system", "content": "You are a security-focused code fixer. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.1,
+            "max_tokens": 2000,
+        }).encode()
+
+        req = Request(
+            "https://api.deepseek.com/v1/chat/completions",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+        )
+
+        with urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        logger.error(f"LLM call failed: {e}")
+        raise
+
+
 def _mark_failed(supabase, vuln_id: str, reason: str):
     """Mark vulnerability as failed and log reason."""
     logger.error(f"Remediation failed for {vuln_id}: {reason}")
@@ -201,9 +264,6 @@ def _mark_failed(supabase, vuln_id: str, reason: str):
         try:
             supabase.table("vulnerabilities").update({
                 "remediation_status": "failed",
-                "description": supabase.raw(
-                    f"description || '\n[FAILED] {reason}'"
-                ),
             }).eq("id", vuln_id).execute()
         except Exception as e:
             logger.error(f"Failed to update failure status: {e}")

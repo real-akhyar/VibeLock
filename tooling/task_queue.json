@@ -207,46 +207,145 @@
   {
     "id": "VIBE-021",
     "title": "Add JWT authentication middleware to dashboard API",
-    "status": "pending",
+    "status": "done",
     "priority": "high",
     "assigned_to": "developer",
     "created": "2026-06-13T04:00:00Z",
+    "completed": "2026-06-13T04:05:00Z",
     "spec_ref": "security hardening"
   },
   {
     "id": "VIBE-022",
     "title": "Add webhook payload validation with Pydantic schemas for all GitHub event types",
-    "status": "pending",
+    "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
     "created": "2026-06-13T04:00:00Z",
+    "completed": "2026-06-13T04:05:00Z",
     "spec_ref": "message.txt §2A"
   },
   {
     "id": "VIBE-023",
     "title": "Add Redis Stream-based job queue with consumer groups for horizontal scaling",
-    "status": "pending",
+    "status": "done",
     "priority": "medium",
     "assigned_to": "system_designer",
     "created": "2026-06-13T04:00:00Z",
+    "completed": "2026-06-13T04:05:00Z",
     "spec_ref": "scalability"
   },
   {
     "id": "VIBE-024",
     "title": "Add Prometheus metrics endpoint for scanner/remediation throughput",
-    "status": "pending",
+    "status": "done",
     "priority": "low",
     "assigned_to": "developer",
     "created": "2026-06-13T04:00:00Z",
+    "completed": "2026-06-13T04:05:00Z",
     "spec_ref": "observability"
   },
   {
     "id": "VIBE-025",
     "title": "Add end-to-end integration test with mock GitHub webhook → scan → fix → PR flow",
-    "status": "pending",
+    "status": "done",
     "priority": "high",
     "assigned_to": "tester",
     "created": "2026-06-13T04:00:00Z",
+    "completed": "2026-06-13T04:05:00Z",
     "spec_ref": "SKILL.md testing conventions"
+  },
+  {
+    "id": "VIBE-026",
+    "title": "Fix import paths in Celery workers — switch from non-existent classes to actual function APIs",
+    "status": "done",
+    "priority": "critical",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T04:05:00Z",
+    "spec_ref": "code quality"
+  },
+  {
+    "id": "VIBE-027",
+    "title": "Make remediation engine accept both Finding dataclass and plain dict inputs",
+    "status": "done",
+    "priority": "critical",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T04:05:00Z",
+    "spec_ref": "code quality"
+  },
+  {
+    "id": "VIBE-028",
+    "title": "Build MCP server with 6 tools — scan_file, scan_semantic, verify_patch, sanitize, health, run_tests",
+    "status": "done",
+    "priority": "high",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T04:05:00Z",
+    "spec_ref": "MCP integration"
+  },
+  {
+    "id": "VIBE-029",
+    "title": "Add pyproject.toml package config with setuptools, MCP entry point, and build system",
+    "status": "done",
+    "priority": "medium",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T04:05:00Z",
+    "spec_ref": "packaging"
+  },
+  {
+    "id": "VIBE-030",
+    "title": "Add rate limiting bypass for health endpoints and internal service calls",
+    "status": "pending",
+    "priority": "medium",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "operational"
+  },
+  {
+    "id": "VIBE-031",
+    "title": "Add webhook event type filtering — configurable allow/deny list per organization",
+    "status": "pending",
+    "priority": "low",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "customization"
+  },
+  {
+    "id": "VIBE-032",
+    "title": "Add vulnerability deduplication — skip re-scanning identical findings within 24h window",
+    "status": "pending",
+    "priority": "medium",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "efficiency"
+  },
+  {
+    "id": "VIBE-033",
+    "title": "Add PR merge status polling — track merged/closed PRs and update Supabase",
+    "status": "pending",
+    "priority": "medium",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "message.txt §4.5"
+  },
+  {
+    "id": "VIBE-034",
+    "title": "Add multi-language support to heuristic scanner — Go, Rust, Java regex patterns",
+    "status": "pending",
+    "priority": "low",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "scanner enhancement"
+  },
+  {
+    "id": "VIBE-035",
+    "title": "Add CLI tool (vibelock CLI) for manual scan/verify/remediate commands",
+    "status": "pending",
+    "priority": "low",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "developer experience"
   }
 ]

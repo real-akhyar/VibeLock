@@ -8,11 +8,12 @@ import os
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from celery import Celery
 from celery.signals import worker_ready
 
-from vibelock.src.scanner.heuristic import HeuristicScanner
-from vibelock.src.scanner.semantic import SemanticScanner
+from vibelock.src.scanner.heuristic import scan_file, scan_directory, Finding, ScanResult
+from vibelock.src.scanner.semantic import scan_code_semantic
 from vibelock.src.shared.sanitizer import TokenSanitizer
 from vibelock.src.shared.loop_state import LoopStateManager
 
@@ -52,9 +53,7 @@ def get_supabase():
     return _supabase
 
 
-# --- Workers ---
-heuristic = HeuristicScanner()
-semantic = SemanticScanner()
+# --- Shared instances ---
 sanitizer = TokenSanitizer()
 loop_state = LoopStateManager()
 
@@ -104,47 +103,70 @@ def scan_repository(self, payload: dict):
     all_vulnerabilities = []
 
     # --- Stage 1: Heuristic scan (all files) ---
-    for file_path in changed_files:
+    for file_path_str in changed_files:
+        file_path = Path(file_path_str)
         try:
-            findings = heuristic.scan_file(file_path)
+            if not file_path.exists():
+                logger.warning(f"File not found (may be deleted): {file_path}")
+                continue
+
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
+            findings = scan_file(file_path, content)
+
             for finding in findings:
-                finding["scan_id"] = scan_id
-                finding["repository_id"] = repo_id
-                finding["commit_sha"] = commit_sha
-                finding["file_path"] = file_path
-                finding["scanner"] = "heuristic"
-                all_vulnerabilities.append(finding)
-        except FileNotFoundError:
-            logger.warning(f"File not found (may be deleted): {file_path}")
+                vuln_dict = {
+                    "scan_id": scan_id,
+                    "repository_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "file_path": str(file_path),
+                    "scanner": "heuristic",
+                    "type": finding.vulnerability_type.value,
+                    "severity": finding.severity.value,
+                    "line_number": finding.line_number,
+                    "description": finding.description,
+                    "code_snippet": finding.code_snippet,
+                    "remediation_hint": finding.remediation_hint,
+                }
+                all_vulnerabilities.append(vuln_dict)
         except Exception as e:
             logger.error(f"Heuristic scan failed for {file_path}: {e}")
 
     # --- Stage 2: Semantic scan (critical files only) ---
     critical_patterns = [
-        "schema.sql", "*.supabase.ts", "middleware", "auth", "route",
+        "schema.sql", "supabase", "middleware", "auth", "route",
         "api/", "controller", "handler", "service",
     ]
     critical_files = [
         f for f in changed_files
-        if any(pattern.replace("*", "") in f.lower() for pattern in critical_patterns)
+        if any(pattern in f.lower() for pattern in critical_patterns)
     ]
 
-    for file_path in critical_files:
+    for file_path_str in critical_files:
+        file_path = Path(file_path_str)
         try:
-            with open(file_path, "r") as fh:
-                code = fh.read()
+            if not file_path.exists():
+                logger.warning(f"Critical file not found: {file_path}")
+                continue
+
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
             # Sanitize before sending to LLM
-            clean_code = sanitizer.sanitize(code)
-            findings = semantic.scan_code(clean_code, file_path)
+            clean_code = sanitizer.sanitize(content)
+            findings = scan_code_semantic(clean_code, str(file_path))
+
             for finding in findings:
-                finding["scan_id"] = scan_id
-                finding["repository_id"] = repo_id
-                finding["commit_sha"] = commit_sha
-                finding["file_path"] = file_path
-                finding["scanner"] = "semantic"
-                all_vulnerabilities.append(finding)
-        except FileNotFoundError:
-            logger.warning(f"Critical file not found: {file_path}")
+                vuln_dict = {
+                    "scan_id": scan_id,
+                    "repository_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "file_path": str(file_path),
+                    "scanner": "semantic",
+                    "type": finding.get("type", "unknown"),
+                    "severity": finding.get("severity", "medium"),
+                    "line_number": finding.get("line_number"),
+                    "description": finding.get("description", ""),
+                    "code_snippet": finding.get("code_snippet", ""),
+                }
+                all_vulnerabilities.append(vuln_dict)
         except Exception as e:
             logger.error(f"Semantic scan failed for {file_path}: {e}")
 

@@ -1,6 +1,6 @@
 [project]
 name = "vibelock"
-version = "0.1.0"
+version = "0.2.0"
 description = "Autonomous security remediation system — webhook ingestion, dual scanner, agentic fix loop, auto PR"
 requires-python = ">=3.11"
 dependencies = [
@@ -18,7 +18,20 @@ dependencies = [
     "deepseek-sdk>=0.1.0",
     "gitpython>=3.1.40",
     "docker>=7.0.0",
+    "psutil>=5.9.0",
+    "aiohttp>=3.9.0",
 ]
+
+[project.scripts]
+vibelock-mcp = "vibelock.src.mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vibelock*"]
 
 [project.optional-dependencies]
 dev = [
