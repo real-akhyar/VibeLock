@@ -26,7 +26,7 @@
   },
   {
     "id": "VIBE-003",
-    "title": "Semantic AI scanner — DeepSeek-Coder integration for logic flaws (missing RLS, unvalidated inputs)",
+    "title": "Semantic AI scanner — DeepSeek-Coder integration for logic flaws",
     "status": "done",
     "priority": "high",
     "assigned_to": "developer",
@@ -36,7 +36,7 @@
   },
   {
     "id": "VIBE-004",
-    "title": "Context assembler + patch generator agent — structured output, JSON schema deltas",
+    "title": "Context assembler + patch generator agent",
     "status": "done",
     "priority": "critical",
     "assigned_to": "developer",
@@ -46,7 +46,7 @@
   },
   {
     "id": "VIBE-005",
-    "title": "Local verification agent — lint + test sandbox for generated patches",
+    "title": "Local verification agent — lint + test sandbox",
     "status": "done",
     "priority": "critical",
     "assigned_to": "tester",
@@ -56,7 +56,7 @@
   },
   {
     "id": "VIBE-006",
-    "title": "Database schema + Supabase integration — orgs, repos, scans, vulns, PRs",
+    "title": "Database schema + Supabase integration",
     "status": "done",
     "priority": "high",
     "assigned_to": "system_designer",
@@ -66,7 +66,7 @@
   },
   {
     "id": "VIBE-007",
-    "title": "GitHub PR automation — checkout branch, apply patch, open PR via API",
+    "title": "GitHub PR automation",
     "status": "done",
     "priority": "high",
     "assigned_to": "developer",
@@ -76,7 +76,7 @@
   },
   {
     "id": "VIBE-008",
-    "title": "Guardrails — 3-attempt cap, token sanitizer, atomic file scoping",
+    "title": "Guardrails — 3-attempt cap, token sanitizer, atomic scoping",
     "status": "done",
     "priority": "critical",
     "assigned_to": "developer",
@@ -96,7 +96,7 @@
   },
   {
     "id": "VIBE-010",
-    "title": "Docker/deployment config + docker-compose for full stack",
+    "title": "Docker/deployment config + docker-compose",
     "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
@@ -106,7 +106,7 @@
   },
   {
     "id": "VIBE-011",
-    "title": "Celery workers — scanner worker + remediation worker with Redis queues",
+    "title": "Celery workers — scanner + remediation with Redis queues",
     "status": "done",
     "priority": "critical",
     "assigned_to": "developer",
@@ -116,7 +116,7 @@
   },
   {
     "id": "VIBE-012",
-    "title": "GitHub PR automation — GitPython branch checkout + PyGithub PR creation",
+    "title": "GitHub PR automation — GitPython + PyGithub",
     "status": "done",
     "priority": "high",
     "assigned_to": "developer",
@@ -126,7 +126,7 @@
   },
   {
     "id": "VIBE-013",
-    "title": "Supabase client — centralized DB reads/writes for scanner + remediation",
+    "title": "Supabase client — centralized DB reads/writes",
     "status": "done",
     "priority": "high",
     "assigned_to": "developer",
@@ -136,7 +136,7 @@
   },
   {
     "id": "VIBE-014",
-    "title": "Cron jobs — heartbeat (15min), watchdog (5min), dead-man switch (10min)",
+    "title": "Cron jobs — heartbeat, watchdog, dead-man switch",
     "status": "done",
     "priority": "critical",
     "assigned_to": "developer",
@@ -146,7 +146,7 @@
   },
   {
     "id": "VIBE-015",
-    "title": "Add health check monitoring endpoint to ingestion gateway",
+    "title": "Health check monitoring endpoint with system metrics",
     "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
@@ -156,7 +156,7 @@
   },
   {
     "id": "VIBE-016",
-    "title": "Add rate limiting middleware to webhook gateway",
+    "title": "Rate limiting middleware for webhook gateway",
     "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
@@ -166,7 +166,7 @@
   },
   {
     "id": "VIBE-017",
-    "title": "Add webhook replay/retry mechanism for failed deliveries",
+    "title": "Webhook replay/retry mechanism for failed deliveries",
     "status": "done",
     "priority": "low",
     "assigned_to": "developer",
@@ -176,7 +176,7 @@
   },
   {
     "id": "VIBE-018",
-    "title": "Add Semgrep rule pack for common Node.js/Python vulnerabilities",
+    "title": "Semgrep rule pack — 20 rules for Python/JS/SQL/Docker",
     "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
@@ -186,7 +186,7 @@
   },
   {
     "id": "VIBE-019",
-    "title": "Add vulnerability dashboard API endpoints (stats, trends, history)",
+    "title": "Dashboard API — summary, trends, scan stats, top repos",
     "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
@@ -196,7 +196,7 @@
   },
   {
     "id": "VIBE-020",
-    "title": "Add Slack/Teams notification integration for critical findings",
+    "title": "Slack/Teams notification integration",
     "status": "done",
     "priority": "low",
     "assigned_to": "developer",
@@ -206,7 +206,7 @@
   },
   {
     "id": "VIBE-021",
-    "title": "Add JWT authentication middleware to dashboard API",
+    "title": "JWT authentication middleware for dashboard API",
     "status": "done",
     "priority": "high",
     "assigned_to": "developer",
@@ -216,7 +216,7 @@
   },
   {
     "id": "VIBE-022",
-    "title": "Add webhook payload validation with Pydantic schemas for all GitHub event types",
+    "title": "Webhook payload validation — Pydantic schemas for all GitHub events",
     "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
@@ -226,7 +226,7 @@
   },
   {
     "id": "VIBE-023",
-    "title": "Add Redis Stream-based job queue with consumer groups for horizontal scaling",
+    "title": "Redis Streams job queue with consumer groups + dead-letter",
     "status": "done",
     "priority": "medium",
     "assigned_to": "system_designer",
@@ -236,7 +236,7 @@
   },
   {
     "id": "VIBE-024",
-    "title": "Add Prometheus metrics endpoint for scanner/remediation throughput",
+    "title": "Prometheus metrics endpoint for scanner/remediation throughput",
     "status": "done",
     "priority": "low",
     "assigned_to": "developer",
@@ -246,7 +246,7 @@
   },
   {
     "id": "VIBE-025",
-    "title": "Add end-to-end integration test with mock GitHub webhook → scan → fix → PR flow",
+    "title": "E2E integration test — mock webhook → scan → fix → PR flow",
     "status": "done",
     "priority": "high",
     "assigned_to": "tester",
@@ -256,96 +256,47 @@
   },
   {
     "id": "VIBE-026",
-    "title": "Fix import paths in Celery workers — switch from non-existent classes to actual function APIs",
-    "status": "done",
-    "priority": "critical",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "completed": "2026-06-13T04:05:00Z",
-    "spec_ref": "code quality"
-  },
-  {
-    "id": "VIBE-027",
-    "title": "Make remediation engine accept both Finding dataclass and plain dict inputs",
-    "status": "done",
-    "priority": "critical",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "completed": "2026-06-13T04:05:00Z",
-    "spec_ref": "code quality"
-  },
-  {
-    "id": "VIBE-028",
-    "title": "Build MCP server with 6 tools — scan_file, scan_semantic, verify_patch, sanitize, health, run_tests",
-    "status": "done",
-    "priority": "high",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "completed": "2026-06-13T04:05:00Z",
-    "spec_ref": "MCP integration"
-  },
-  {
-    "id": "VIBE-029",
-    "title": "Add pyproject.toml package config with setuptools, MCP entry point, and build system",
-    "status": "done",
-    "priority": "medium",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "completed": "2026-06-13T04:05:00Z",
-    "spec_ref": "packaging"
-  },
-  {
-    "id": "VIBE-030",
-    "title": "Add rate limiting bypass for health endpoints and internal service calls",
-    "status": "pending",
-    "priority": "medium",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "spec_ref": "operational"
-  },
-  {
-    "id": "VIBE-031",
-    "title": "Add webhook event type filtering — configurable allow/deny list per organization",
-    "status": "pending",
-    "priority": "low",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "spec_ref": "customization"
-  },
-  {
-    "id": "VIBE-032",
-    "title": "Add vulnerability deduplication — skip re-scanning identical findings within 24h window",
-    "status": "pending",
-    "priority": "medium",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "spec_ref": "efficiency"
-  },
-  {
-    "id": "VIBE-033",
-    "title": "Add PR merge status polling — track merged/closed PRs and update Supabase",
-    "status": "pending",
-    "priority": "medium",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "spec_ref": "message.txt §4.5"
-  },
-  {
-    "id": "VIBE-034",
-    "title": "Add multi-language support to heuristic scanner — Go, Rust, Java regex patterns",
-    "status": "pending",
-    "priority": "low",
-    "assigned_to": "developer",
-    "created": "2026-06-13T04:05:00Z",
-    "spec_ref": "scanner enhancement"
-  },
-  {
-    "id": "VIBE-035",
-    "title": "Add CLI tool (vibelock CLI) for manual scan/verify/remediate commands",
+    "title": "Add OpenAPI/Swagger documentation auto-generation from route decorators",
     "status": "pending",
     "priority": "low",
     "assigned_to": "developer",
     "created": "2026-06-13T04:05:00Z",
     "spec_ref": "developer experience"
+  },
+  {
+    "id": "VIBE-027",
+    "title": "Add CLI tool for manual scan trigger and remediation status check",
+    "status": "pending",
+    "priority": "medium",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "operational requirements"
+  },
+  {
+    "id": "VIBE-028",
+    "title": "Add GitHub App manifest + setup flow for one-click installation",
+    "status": "pending",
+    "priority": "high",
+    "assigned_to": "developer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "message.txt §2A"
+  },
+  {
+    "id": "VIBE-029",
+    "title": "Add vulnerability false-positive feedback loop (user marks → model learns)",
+    "status": "pending",
+    "priority": "medium",
+    "assigned_to": "system_designer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "ML improvement"
+  },
+  {
+    "id": "VIBE-030",
+    "title": "Add multi-tenant isolation — org-level API keys + data segregation",
+    "status": "pending",
+    "priority": "high",
+    "assigned_to": "system_designer",
+    "created": "2026-06-13T04:05:00Z",
+    "spec_ref": "message.txt §3"
   }
 ]
