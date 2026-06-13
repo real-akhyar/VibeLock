@@ -490,6 +490,46 @@ async def dashboard_health():
     )
 
 
+# --- False-Positive Feedback Routes ---
+
+from vibelock.src.scanner.feedback import (
+    FeedbackEntry,
+    FeedbackStats,
+    record_false_positive,
+    get_feedback_stats,
+)
+
+
+@router.post("/feedback/false-positive", response_model=dict)
+async def submit_false_positive(entry: FeedbackEntry):
+    """
+    Mark a vulnerability as a false positive.
+
+    Records the feedback and adjusts future scan confidence for the
+    associated detection rule.
+    """
+    try:
+        result = await record_false_positive(entry)
+        return result
+    except Exception as e:
+        logger.error("feedback_submit_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/feedback/stats", response_model=FeedbackStats)
+async def feedback_statistics(days: int = Query(default=30, ge=1, le=365)):
+    """
+    Get false-positive feedback statistics.
+
+    Returns counts by rule, by repository, and recent entries.
+    """
+    try:
+        return await get_feedback_stats(days)
+    except Exception as e:
+        logger.error("feedback_stats_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Mock Data ---
 
 def _mock_summary() -> VulnerabilitySummary:

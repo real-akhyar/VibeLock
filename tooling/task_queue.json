@@ -257,37 +257,42 @@
   {
     "id": "VIBE-026",
     "title": "Add OpenAPI/Swagger documentation auto-generation from route decorators",
-    "status": "pending",
+    "status": "done",
     "priority": "low",
     "assigned_to": "developer",
     "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T06:10:00Z",
     "spec_ref": "developer experience"
   },
   {
     "id": "VIBE-027",
     "title": "Add CLI tool for manual scan trigger and remediation status check",
-    "status": "pending",
+    "status": "done",
     "priority": "medium",
     "assigned_to": "developer",
     "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T06:10:00Z",
     "spec_ref": "operational requirements"
   },
   {
     "id": "VIBE-028",
     "title": "Add GitHub App manifest + setup flow for one-click installation",
-    "status": "pending",
+    "status": "done",
     "priority": "high",
     "assigned_to": "developer",
     "created": "2026-06-13T04:05:00Z",
+    "started": "2026-06-13T05:05:00Z",
+    "completed": "2026-06-13T06:10:00Z",
     "spec_ref": "message.txt §2A"
   },
   {
     "id": "VIBE-029",
     "title": "Add vulnerability false-positive feedback loop (user marks → model learns)",
-    "status": "pending",
+    "status": "done",
     "priority": "medium",
     "assigned_to": "system_designer",
     "created": "2026-06-13T04:05:00Z",
+    "completed": "2026-06-13T06:10:00Z",
     "spec_ref": "ML improvement"
   },
   {
