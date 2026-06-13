@@ -1,0 +1,70 @@
+# VibeLock — Docker Compose (Full Stack)
+version: "3.9"
+
+services:
+  # --- Ingestion Gateway ---
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ingestion
+    ports:
+      - "${VIBELOCK_API_PORT:-8000}:8000"
+    environment:
+      - VIBELOCK_GITHUB_WEBHOOK_SECRET=${VIBELOCK_GITHUB_WEBHOOK_SECRET}
+      - VIBELOCK_REDIS_URL=redis://redis:6379/0
+      - VIBELOCK_JWT_SECRET=${VIBELOCK_JWT_SECRET}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Celery Scanner Worker ---
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: scanner
+    environment:
+      - VIBELOCK_REDIS_URL=redis://redis:6379/0
+      - VIBELOCK_SUPABASE_URL=${VIBELOCK_SUPABASE_URL}
+      - VIBELOCK_SUPABASE_KEY=${VIBELOCK_SUPABASE_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  # --- Celery Remediation Worker ---
+  remediation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: remediation
+    environment:
+      - VIBELOCK_REDIS_URL=redis://redis:6379/0
+      - VIBELOCK_SUPABASE_URL=${VIBELOCK_SUPABASE_URL}
+      - VIBELOCK_SUPABASE_KEY=${VIBELOCK_SUPABASE_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Redis Message Broker ---
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
