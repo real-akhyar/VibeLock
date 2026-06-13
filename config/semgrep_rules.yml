@@ -278,3 +278,75 @@ rules:
     metadata:
       category: security
       confidence: MEDIUM
+
+  # ============================================================
+  # Additional Rules (VIBE-018)
+  # ============================================================
+
+  - id: python-path-traversal
+    pattern-either:
+      - pattern: |
+          os.path.join($BASE, $USER_INPUT)
+      - pattern: |
+          open($USER_INPUT, ...)
+      - pattern: |
+          pathlib.Path($USER_INPUT)
+    message: |
+      Potential path traversal. Validate and sanitize user-supplied file paths.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-22: Path Traversal"
+      confidence: MEDIUM
+
+  - id: python-ssrf-requests
+    pattern-either:
+      - pattern: |
+          requests.get($USER_URL)
+      - pattern: |
+          requests.post($USER_URL)
+      - pattern: |
+          httpx.get($USER_URL)
+    message: |
+      Potential SSRF: user-supplied URL passed to HTTP client. Validate and restrict URLs.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-918: Server-Side Request Forgery"
+      confidence: MEDIUM
+
+  - id: js-command-injection
+    pattern-either:
+      - pattern: |
+          child_process.exec($CMD)
+      - pattern: |
+          exec($CMD)
+      - pattern: |
+          execSync($CMD)
+      - pattern: |
+          spawn($CMD)
+    message: |
+      Potential command injection via child_process. Avoid user input in shell commands.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+      confidence: HIGH
+
+  - id: js-nosql-injection
+    pattern-either:
+      - pattern: |
+          $DB.collection($NAME).find({$QUERY: req.body.$FIELD})
+      - pattern: |
+          $DB.collection($NAME).find({$QUERY: req.query.$FIELD})
+    message: |
+      Potential NoSQL injection. Sanitize user input before passing to database queries.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-943: Improper Neutralization of Special Elements in Data Query Logic"
+      confidence: MEDIUM

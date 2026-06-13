@@ -209,6 +209,37 @@ def scan_repository(self, payload: dict):
         for vuln in critical_findings:
             remediate_vulnerability.delay(vuln)
 
+    # --- Send notifications ---
+    try:
+        from vibelock.src.notifications import dispatch_notification
+        from vibelock.src.notifications.models import NotificationEvent
+
+        dispatch_notification(NotificationEvent.SCAN_COMPLETED, {
+            "org": full_name.split("/")[0] if "/" in full_name else full_name,
+            "repo": full_name,
+            "commit": commit_sha,
+            "branch": branch,
+            "vulns_total": len(all_vulnerabilities),
+            "critical_count": len(critical_findings),
+            "high_count": len([v for v in all_vulnerabilities if v.get("severity") == "high"]),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        for vuln in critical_findings:
+            dispatch_notification(NotificationEvent.CRITICAL_VULN_FOUND, {
+                "org": full_name.split("/")[0] if "/" in full_name else full_name,
+                "repo": full_name,
+                "file": vuln.get("file_path", ""),
+                "vuln_type": vuln.get("type", vuln.get("vulnerability_type", "unknown")),
+                "severity": vuln.get("severity", "unknown"),
+                "description": vuln.get("description", ""),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+    except ImportError:
+        logger.info("notifications_module_not_available")
+    except Exception as e:
+        logger.error(f"Notification dispatch failed: {e}")
+
     logger.info(
         f"Scan complete: {full_name}@{commit_sha} — "
         f"{len(all_vulnerabilities)} vulns ({len(critical_findings)} critical)"

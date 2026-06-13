@@ -202,6 +202,27 @@ def remediate_vulnerability(self, vuln: dict):
             }).execute()
 
         logger.info(f"PR opened for {vuln_id}: {pr_result.get('html_url')}")
+
+        # --- Send PR notification ---
+        try:
+            from vibelock.src.notifications import dispatch_notification
+            from vibelock.src.notifications.models import NotificationEvent
+
+            full_name = vuln.get("full_name", "unknown")
+            dispatch_notification(NotificationEvent.PR_OPENED, {
+                "org": full_name.split("/")[0] if "/" in full_name else full_name,
+                "repo": full_name,
+                "pr_url": pr_result.get("html_url", ""),
+                "vuln_type": vuln_type,
+                "severity": severity,
+                "file_path": file_path,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except ImportError:
+            logger.info("notifications_module_not_available")
+        except Exception as e:
+            logger.error(f"PR notification failed: {e}")
+
         return {"status": "pr_opened", "pr_url": pr_result.get("html_url")}
 
     except Exception as e:
@@ -267,3 +288,21 @@ def _mark_failed(supabase, vuln_id: str, reason: str):
             }).eq("id", vuln_id).execute()
         except Exception as e:
             logger.error(f"Failed to update failure status: {e}")
+
+    # --- Send failure notification ---
+    try:
+        from vibelock.src.notifications import dispatch_notification
+        from vibelock.src.notifications.models import NotificationEvent
+
+        dispatch_notification(NotificationEvent.REMEDIATION_FAILED, {
+            "org": "unknown",
+            "repo": "unknown",
+            "vuln_id": vuln_id,
+            "vuln_type": "unknown",
+            "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.error(f"Failure notification failed: {e}")

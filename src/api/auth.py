@@ -5,6 +5,7 @@ Provides JWT-based auth for dashboard API and internal service-to-service calls.
 
 import os
 import time
+import hashlib
 import logging
 from typing import Optional
 from dataclasses import dataclass, field
@@ -100,6 +101,36 @@ def create_internal_token(service_name: str) -> str:
     )
 
 
+async def resolve_org_from_api_key(api_key: str) -> Optional[str]:
+    """
+    Look up an organization by its vl_ prefixed API key.
+    Returns org_id string or None if key is invalid/unknown.
+    """
+    if not api_key or not api_key.startswith("vl_"):
+        return None
+
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+    try:
+        from vibelock.src.shared.supabase_client import supabase
+
+        if not supabase.is_connected:
+            logger.warning("resolve_org_from_api_key: supabase not connected")
+            return None
+
+        result = (
+            supabase.client.table("organizations")
+            .select("id")
+            .eq("api_key_hash", key_hash)
+            .single()
+            .execute()
+        )
+        return result.data["id"] if result.data else None
+    except Exception as e:
+        logger.warning(f"resolve_org_from_api_key failed: {e}")
+        return None
+
+
 # --- Auth Dependencies ---
 
 async def authenticate_jwt(
@@ -124,17 +155,30 @@ async def authenticate_jwt(
 async def authenticate_api_key(
     request: Request,
 ) -> AuthenticatedUser:
-    """Authenticate via API key header (for CI/CD or external integrations)."""
+    """Authenticate via API key header (for CI/CD or external integrations).
+    Supports both internal API keys and vl_ prefixed org-level API keys."""
     api_key = request.headers.get(auth_config.api_key_header)
 
     if not api_key:
         raise HTTPException(status_code=401, detail="Missing API key header")
 
+    # Check for vl_ prefixed org-level API keys first
+    if api_key.startswith("vl_"):
+        org_id = await resolve_org_from_api_key(api_key)
+        if org_id:
+            return AuthenticatedUser(
+                user_id=f"org:{org_id}",
+                org_id=org_id,
+                role="admin",
+                auth_method="api_key",
+            )
+        raise HTTPException(status_code=401, detail="Invalid org API key")
+
+    # Fall back to internal API key check
     if not auth_config.internal_api_key:
         logger.warning("internal_api_key_not_configured")
         raise HTTPException(status_code=401, detail="API key auth not configured")
 
-    # Constant-time comparison
     if not _constant_time_compare(api_key, auth_config.internal_api_key):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
@@ -213,6 +257,7 @@ require_admin_or_internal = require_role("admin", "internal")
 async def auth_middleware(request: Request, call_next):
     """
     Global auth middleware — attaches user context to request.state.
+    Sets Supabase RLS context (app.current_org_id) for tenant isolation.
     Skips auth for health endpoints and webhook receiver.
     """
     # Skip auth for public endpoints
@@ -227,11 +272,13 @@ async def auth_middleware(request: Request, call_next):
         auth_header = request.headers.get("Authorization", "")
         api_key = request.headers.get(auth_config.api_key_header, "")
 
+        user = None
+
         if auth_header.startswith("Bearer "):
             try:
                 token = auth_header[7:]
                 payload = decode_token(token)
-                request.state.user = AuthenticatedUser(
+                user = AuthenticatedUser(
                     user_id=payload.sub,
                     org_id=payload.org_id,
                     role=payload.role,
@@ -240,15 +287,43 @@ async def auth_middleware(request: Request, call_next):
             except HTTPException:
                 pass  # Let endpoint-level Depends handle it
         elif api_key:
-            if auth_config.internal_api_key and _constant_time_compare(
+            # Check vl_ prefixed org API keys
+            if api_key.startswith("vl_"):
+                org_id = await resolve_org_from_api_key(api_key)
+                if org_id:
+                    user = AuthenticatedUser(
+                        user_id=f"org:{org_id}",
+                        org_id=org_id,
+                        role="admin",
+                        auth_method="api_key",
+                    )
+            elif auth_config.internal_api_key and _constant_time_compare(
                 api_key, auth_config.internal_api_key
             ):
-                request.state.user = AuthenticatedUser(
+                user = AuthenticatedUser(
                     user_id="api_key",
                     org_id=None,
                     role="admin",
                     auth_method="api_key",
                 )
+
+        if user:
+            request.state.user = user
+
+            # Set RLS context for Supabase tenant isolation
+            if user.org_id:
+                try:
+                    from vibelock.src.shared.supabase_client import supabase
+                    if supabase.is_connected:
+                        supabase.client.rpc(
+                            "set_config",
+                            {
+                                "setting_name": "app.current_org_id",
+                                "setting_value": user.org_id,
+                            },
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to set RLS context: {e}")
 
     return await call_next(request)
 

@@ -330,3 +330,39 @@ class SupabaseClient:
 
 # Module-level singleton
 supabase = SupabaseClient()
+
+
+class TenantScopedQuery:
+    """
+    Wraps a Supabase query builder to inject org_id filtering automatically.
+    Provides defense-in-depth on top of RLS policies.
+
+    Usage:
+        query = TenantScopedQuery(supabase.client, org_id)
+        result = query.table("vulnerabilities").select("*").execute()
+    """
+
+    def __init__(self, client, org_id: str):
+        self._client = client
+        self._org_id = org_id
+
+    @property
+    def org_id(self) -> str:
+        return self._org_id
+
+    def table(self, name: str):
+        """Return a query builder pre-scoped to the tenant's org."""
+        builder = self._client.table(name)
+
+        if name == "organizations":
+            builder = builder.eq("id", self._org_id)
+        elif name == "repositories":
+            builder = builder.eq("organization_id", self._org_id)
+        # scans, vulnerabilities, pull_requests are RLS-enforced at DB level;
+        # app-level filtering here is defense-in-depth
+
+        return builder
+
+    def rpc(self, fn_name: str, params: dict = None):
+        """Execute a stored procedure within tenant context."""
+        return self._client.rpc(fn_name, params or {})

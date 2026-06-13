@@ -163,6 +163,30 @@ def scan_directory(root: Path, changed_files: Optional[List[str]] = None) -> Sca
             result.errors.append(f"Failed to scan {file_path}: {e}")
             logger.error("scan_error", file=str(file_path), error=str(e))
     
+    # --- Stage 2: Semgrep rule-based scan ---
+    try:
+        from vibelock.src.scanner.semgrep_runner import run_semgrep_on_files
+        
+        target_paths = [str(t) for t in targets]
+        semgrep_findings = run_semgrep_on_files(target_paths)
+        
+        for sf in semgrep_findings:
+            result.findings.append(Finding(
+                vulnerability_type=VulnType(sf.get("vulnerability_type", "unknown")),
+                severity=Severity(sf.get("severity", "medium")),
+                file_path=sf.get("file_path", ""),
+                line_number=sf.get("line_number", 0),
+                description=sf.get("description", ""),
+                code_snippet=sf.get("code_snippet", ""),
+                remediation_hint=sf.get("description", ""),
+            ))
+        
+        logger.info("semgrep_scan_complete", findings=len(semgrep_findings))
+    except ImportError:
+        logger.info("semgrep_runner_not_available")
+    except Exception as e:
+        logger.error("semgrep_scan_error", error=str(e))
+    
     logger.info(
         "scan_complete",
         files_scanned=result.files_scanned,
