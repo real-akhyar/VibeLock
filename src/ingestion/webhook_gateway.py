@@ -52,6 +52,22 @@ app = FastAPI(
 from vibelock.src.api.github_setup_routes import router as github_setup_router
 app.include_router(github_setup_router)
 
+# Mount Dashboard API routes
+from vibelock.src.api.dashboard import router as dashboard_router
+app.include_router(dashboard_router)
+
+# Mount API Keys routes
+from vibelock.src.api.api_keys import router as api_keys_router
+app.include_router(api_keys_router)
+
+# Mount Prometheus metrics routes
+from vibelock.src.shared.metrics import router as metrics_router
+app.include_router(metrics_router)
+
+# Mount Auth routes (prefix: /auth)
+from vibelock.src.api.auth_routes import router as auth_router
+app.include_router(auth_router)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
