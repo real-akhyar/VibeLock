@@ -64,8 +64,8 @@ app.include_router(api_keys_router)
 from vibelock.src.shared.metrics import router as metrics_router
 app.include_router(metrics_router)
 
-# Mount Auth routes (prefix: /auth)
-from vibelock.src.api.auth_routes import router as auth_router
+# Mount Auth routes (login)
+from vibelock.src.api.auth import auth_router
 app.include_router(auth_router)
 
 # CORS

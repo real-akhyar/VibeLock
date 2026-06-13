@@ -11,7 +11,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 import jwt
-from fastapi import Request, HTTPException, Depends
+from fastapi import Request, HTTPException, Depends, APIRouter
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -330,6 +330,64 @@ async def auth_middleware(request: Request, call_next):
 
 # --- Utilities ---
 
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(body: LoginRequest):
+    """
+    Authenticate user with username/password and return JWT token.
+    Uses Supabase auth for credential verification.
+    """
+    try:
+        from vibelock.src.shared.supabase_client import supabase
+
+        if not supabase.is_connected:
+            raise HTTPException(
+                status_code=503,
+                detail="Authentication service unavailable — Supabase not connected",
+            )
+
+        # Authenticate against Supabase
+        auth_result = supabase.client.auth.sign_in_with_password({
+            "email": body.username,
+            "password": body.password,
+        })
+
+        if not auth_result or not auth_result.user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        user = auth_result.user
+        token = create_token(
+            user_id=user.id,
+            org_id=user.user_metadata.get("org_id") if user.user_metadata else None,
+            role=user.user_metadata.get("role", "admin") if user.user_metadata else "admin",
+        )
+
+        return LoginResponse(access_token=token, token_type="bearer")
+
+    except HTTPException:
+        raise
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service unavailable — supabase-py not installed",
+        )
+    except Exception as e:
+        logger.error("login_failed", error=str(e))
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
 def _constant_time_compare(a: str, b: str) -> bool:
     """Constant-time string comparison to prevent timing attacks."""
     if len(a) != len(b):
@@ -337,4 +395,47 @@ def _constant_time_compare(a: str, b: str) -> bool:
     result = 0
     for x, y in zip(a, b):
         result |= ord(x) ^ ord(y)
-    return result == 0
+    return result
+
+
+# --- Auth Router (login endpoint) ---
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+auth_router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+@auth_router.post("/login", response_model=LoginResponse)
+async def login(body: LoginRequest):
+    """
+    Authenticate user with username/password and return a JWT access token.
+
+    For now, uses a simple credential check against environment variables.
+    In production, this should validate against Supabase auth or an identity provider.
+    """
+    import os
+
+    valid_username = os.getenv("VIBELOCK_ADMIN_USERNAME", "admin")
+    valid_password = os.getenv("VIBELOCK_ADMIN_PASSWORD", "admin")
+
+    if body.username != valid_username or body.password != valid_password:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = create_token(
+        user_id=body.username,
+        org_id=None,
+        role="admin",
+    )
+
+    return LoginResponse(access_token=token, token_type="bearer")
